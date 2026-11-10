@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1D5FC4">
+<meta name="description" content="Long division on a square grid, to any number of decimal places.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Long Division Grid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: input strip and result on top; the division board (scrolls sideways) sits beside the written steps on wide screens. */
+:root {
+  --bg: #EEF2F6;
+  --surface: #FFFFFF;
+  --ink: #16202E;
+  --muted: #566679;
+  --grid: #CCD9E7;
+  --line: #BCCADA;
+  --accent: #1D5FC4;
+  --accent-soft: #DCE8F9;
+  --bring: #B4540A;
+  --good: #0F7B4B;
+  --warn: #A33A1E;
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E141C; --surface: #151E2A; --ink: #E4EBF3; --muted: #93A3B6;
+    --grid: #263548; --line: #34465C; --accent: #78AEFF; --accent-soft: #1D2F4B;
+    --bring: #F2B35E; --good: #5FD19B; --warn: #FF9D84;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0E141C; --surface: #151E2A; --ink: #E4EBF3; --muted: #93A3B6;
+  --grid: #263548; --line: #34465C; --accent: #78AEFF; --accent-soft: #1D2F4B;
+  --bring: #F2B35E; --good: #5FD19B; --warn: #FF9D84;
+  color-scheme: dark;
+}
+
+:root { color-scheme: light; padding-block: env(safe-area-inset-top, 0px) env(safe-area-inset-bottom, 0px); }
+* { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 26px; line-height: 1.2; font-weight: 600; margin: 0; text-wrap: balance; }
+h2 { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+.sub { margin: 4px 0 0; color: var(--muted); max-width: 62ch; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+
+/* inputs */
+.controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 14px; padding: 16px; }
+.controls label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; color: var(--muted); flex: 1 1 130px; min-width: 0; }
+.controls .op { font-size: 22px; color: var(--muted); padding-bottom: 6px; flex: 0 0 auto; }
+.controls input[type="text"], .controls input[type="number"], .controls select {
+  height: 42px; width: 100%; min-width: 0;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--bg); color: var(--ink);
+  font: 500 17px var(--font-mono); padding: 0 10px;
+}
+.controls select { font-family: var(--font-ui); font-size: 15px; }
+.controls .chk { flex: 0 0 auto; flex-direction: row; align-items: center; gap: 8px; height: 42px; font-size: 15px; color: var(--ink); cursor: pointer; }
+.controls .chk input { width: 18px; height: 18px; accent-color: var(--accent); margin: 0; }
+.msg { min-height: 1.5em; margin: -6px 2px 0; color: var(--warn); font-size: 14px; }
+
+/* result */
+.result { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px 24px; padding: 16px; }
+.result > div { min-width: 0; }
+.lbl { display: block; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.big { display: block; font: 600 30px/1.25 var(--font-mono); color: var(--accent); overflow-wrap: anywhere; }
+.mid { display: block; font: 600 22px/1.4 var(--font-mono); }
+.rec { display: block; font: 500 15px/1.5 var(--font-mono); color: var(--muted); overflow-wrap: anywhere; }
+.check { grid-column: 1 / -1; font: 500 14px/1.5 var(--font-mono); color: var(--muted); overflow-wrap: anywhere; border-top: 1px solid var(--line); padding-top: 12px; }
+.check b { color: var(--ink); font-weight: 600; }
+.notes { grid-column: 1 / -1; margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.notes:empty { display: none; }
+
+/* board + steps */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (min-width: 980px) { .layout { grid-template-columns: minmax(0, 1fr) 340px; } }
+.boardcard { min-width: 0; }
+.stepbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.stepbar .where { margin-right: auto; font-weight: 500; font-variant-numeric: tabular-nums; }
+.btn {
+  height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); color: var(--ink); font: 500 14px var(--font-ui); cursor: pointer;
+}
+.btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { opacity: .45; cursor: default; }
+.scroller { overflow: auto; padding: 16px; max-width: 100%; }
+
+.board {
+  --cell: 40px; --cols: 10; --rows: 6; --nd: 1;
+  position: relative; box-sizing: content-box;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), var(--cell));
+  grid-template-rows: repeat(var(--rows), var(--cell));
+  width: calc(var(--cols) * var(--cell));
+  height: calc(var(--rows) * var(--cell));
+  font-family: var(--font-mono);
+  touch-action: pan-x pan-y;
+}
+.board.grid {
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: var(--cell) var(--cell);
+  border-right: 1px solid var(--grid);
+  border-bottom: 1px solid var(--grid);
+}
+.colhl { position: absolute; top: 0; bottom: 0; width: var(--cell); background: var(--accent-soft); pointer-events: none; display: none; }
+.bracket {
+  position: absolute; left: calc(var(--nd) * var(--cell)); top: var(--cell); right: 0; bottom: 0;
+  border-left: 2px solid var(--ink); border-top: 2px solid var(--ink); pointer-events: none;
+}
+.c {
+  display: grid; place-items: center; line-height: 1;
+  font-size: calc(var(--cell) * .52); font-weight: 500; color: var(--ink);
+  transition: opacity .15s;
+}
+.c.off { opacity: 0; }
+.c.qd { color: var(--accent); font-weight: 600; }
+.c.dv { font-weight: 600; }
+.c.ul { border-bottom: 2px solid var(--ink); }
+.c.minus { color: var(--muted); }
+.c.br { color: var(--bring); font-weight: 600; }
+.c.rm { font-weight: 600; background: var(--accent-soft); }
+
+.steps { padding: 16px; }
+.steps ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; max-height: 560px; overflow: auto; }
+.steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; font-size: 14px; transition: opacity .15s; }
+.steps li.off { opacity: .35; }
+.steps li.now .n { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.steps .n { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font: 600 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.steps p { margin: 2px 0 0; overflow-wrap: anywhere; }
+.steps b { font-family: var(--font-mono); font-weight: 600; }
+
+@media (max-width: 520px) {
+  h1 { font-size: 22px; }
+  .big { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .c, .steps li { transition: none; }
+}
+</style>
+</head>
+<body>
+
+
+<main class="wrap">
+  <header>
+    <h1>Long Division Grid</h1>
+    <p class="sub">Each digit sits in its own square, so you can check that the quotient, the products and the remainders line up column by column.</p>
+  </header>
+
+  <form id="ctl" class="panel controls" autocomplete="off">
+    <label for="dividend">Dividend
+      <input id="dividend" type="text" inputmode="decimal" value="22" spellcheck="false">
+    </label>
+    <span class="op" aria-hidden="true">÷</span>
+    <label for="divisor">Divisor
+      <input id="divisor" type="text" inputmode="decimal" value="7" spellcheck="false">
+    </label>
+    <label for="places">Decimal places
+      <input id="places" type="number" min="0" max="30" step="1" value="6">
+    </label>
+    <label for="size">Square size
+      <select id="size">
+        <option value="32">Small</option>
+        <option value="40" selected>Medium</option>
+        <option value="52">Large</option>
+      </select>
+    </label>
+    <label class="chk" for="gridToggle">
+      <input id="gridToggle" type="checkbox" checked> Show grid
+    </label>
+  </form>
+  <p id="msg" class="msg" role="alert"></p>
+
+  <section class="panel result" id="result" aria-live="polite"></section>
+
+  <div class="layout">
+    <section class="panel boardcard" aria-label="Long division working">
+      <div class="stepbar">
+        <span class="where" id="where"></span>
+        <button type="button" class="btn" id="back">Back</button>
+        <button type="button" class="btn" id="next">Next step</button>
+        <button type="button" class="btn" id="all">Show all</button>
+      </div>
+      <div class="scroller"><div class="board grid" id="board"></div></div>
+    </section>
+    <aside class="panel steps">
+      <h2>Working</h2>
+      <ol id="steplist"></ol>
+    </aside>
+  </div>
+</main>
+
+<script>
+// <compute>
+function parseNum(raw) {
+  let s = String(raw).trim().replace(/,/g, '');
+  let neg = false;
+  if (s[0] === '-') { neg = true; s = s.slice(1); } else if (s[0] === '+') { s = s.slice(1); }
+  const m = /^(\d*)(?:\.(\d*))?$/.exec(s);
+  if (!m || ((m[1] || '') === '' && (m[2] || '') === '')) return null;
+  return {
+    neg,
+    int: (m[1] || '').replace(/^0+(?=\d)/, '') || '0',
+    frac: (m[2] || '').replace(/0+$/, '')
+  };
+}
+
+function toDec(v, n) {
+  const s = String(v).padStart(n + 1, '0');
+  return n ? s.slice(0, -n) + '.' + s.slice(-n) : s;
+}
+
+function compute(A, B, places) {
+  const k = B.frac.length;
+  const bStr = (B.int + B.frac).replace(/^0+(?=\d)/, '') || '0';
+  const b = BigInt(bStr);
+  if (b === 0n) return { error: 'zero' };
+
+  const f = A.frac.padEnd(k, '0');
+  const intPart = (A.int + f.slice(0, k)).replace(/^0+(?=\d)/, '') || '0';
+  let frac = f.slice(k);
+  const fullFrac = frac;
+  let truncated = false;
+  if (frac.length > places) { frac = frac.slice(0, places); truncated = true; }
+
+  const digs = (intPart + frac).split('').map(Number);
+  const nInt = intPart.length;
+  const origLen = digs.length;
+
+  const out = [];
+  let rem = 0n, started = false;
+  for (let i = 0; ; i++) {
+    if (i >= digs.length) {
+      if (rem === 0n || digs.length - nInt >= places) break;
+      digs.push(0);
+    }
+    const cur = rem * 10n + BigInt(digs[i]);
+    const q = cur / b, prod = q * b, nr = cur - prod;
+    if (!started && q > 0n) started = true;
+    out.push({ i, cur, q, prod, rem: nr, started, visible: started || i >= nInt - 1 });
+    rem = nr;
+  }
+  const hasPoint = digs.length > nInt;
+
+  let step = 0;
+  for (const o of out) o.step = o.visible ? ++step : 0;
+  const total = step;
+
+  const rows = [];
+  let firstDone = false;
+  for (const o of out) {
+    if (!o.started) continue;
+    if (firstDone) rows.push({ type: 'work', text: String(o.cur), end: o.i, step: o.step });
+    firstDone = true;
+    rows.push({ type: 'prod', text: String(o.prod), end: o.i, span: String(o.cur).length, step: o.step });
+  }
+  const last = out[out.length - 1];
+  if (firstDone) rows.push({ type: 'rem', text: String(last.rem), end: last.i, step: total });
+
+  const qs = out.map(o => String(o.q));
+  const qInt = qs.slice(0, nInt).join('').replace(/^0+(?=\d)/, '');
+  const qFrac = qs.slice(nInt).join('');
+  const quotient = qInt + (qFrac ? '.' + qFrac : '');
+  const finalRem = last.rem;
+  const n = digs.length - nInt;
+
+  let recurring = null;
+  if (finalRem !== 0n && digs.length > origLen) {
+    const seen = new Map();
+    seen.set(String(out[origLen - 1].rem), origLen - 1);
+    for (let i = origLen; i < out.length; i++) {
+      const r = String(out[i].rem);
+      if (r !== '0' && seen.has(r)) {
+        const s = seen.get(r) + 1;
+        recurring = { block: qs.slice(s, i + 1).join(''), lead: qs.slice(nInt, s).join('') };
+        break;
+      }
+      seen.set(r, i);
+    }
+  }
+
+  return {
+    b, bStr, k, intPart, frac, fullFrac, truncated, digs, nInt, origLen, hasPoint, out, rows, total,
+    qInt, qFrac, quotient, finalRem, n, recurring,
+    negative: (A.neg !== B.neg) && /[1-9]/.test(quotient),
+    usedDividend: toDec(BigInt(digs.join('')), n),
+    qDec: toDec(BigInt(qs.join('')), n),
+    remDec: toDec(finalRem, n)
+  };
+}
+// </compute>
+
+(function () {
+  const $ = id => document.getElementById(id);
+  const board = $('board'), listEl = $('steplist'), resultEl = $('result'), msg = $('msg');
+  let model = null, shown = 0, cellPx = 40;
+
+  function parseInputs() {
+    const aRaw = $('dividend').value, bRaw = $('divisor').value, pRaw = $('places').value.trim();
+    if (!aRaw.trim() || !bRaw.trim()) return { err: 'Enter both the dividend and the divisor.' };
+    const A = parseNum(aRaw), B = parseNum(bRaw);
+    if (!A || !B) return { err: 'Use digits and at most one decimal point, for example 125.6.' };
+    if (!/^\d+$/.test(pRaw) || +pRaw > 30) return { err: 'Decimal places must be a whole number from 0 to 30.' };
+    if ((A.int + A.frac).length > 24 || (B.int + B.frac).length > 12) {
+      return { err: 'Keep the dividend to 24 digits and the divisor to 12 digits so the working fits on the grid.' };
+    }
+    return { A, B, places: +pRaw, aRaw: aRaw.trim(), bRaw: bRaw.trim() };
+  }
+
+  function stepText(m, o, idx) {
+    const b = m.bStr;
+    const parts = [];
+    const firstStarted = o.started && !m.out.slice(0, idx).some(x => x.started);
+    if (firstStarted) parts.push(`Take <b>${o.cur}</b>, the first part of the dividend that is at least ${b}.`);
+    if (o.q === 0n) {
+      parts.push(`<b>${o.cur}</b> is smaller than <b>${b}</b>, so write <b>0</b> in the quotient.` + (o.started ? ` ${o.cur} − 0 = <b>${o.rem}</b>.` : ''));
+    } else {
+      parts.push(`${b} × ${o.q} = <b>${o.prod}</b>, so write <b>${o.q}</b> in the quotient. ${o.cur} − ${o.prod} = <b>${o.rem}</b>.`);
+    }
+    if (idx === m.nInt - 1 && m.hasPoint) parts.push('Put the decimal point in the quotient.');
+    const nxt = m.out[idx + 1];
+    if (nxt && o.started) {
+      parts.push(idx + 1 >= m.origLen
+        ? `Bring down a 0 (add a zero after the decimal point) to make <b>${nxt.cur}</b>.`
+        : `Bring down ${m.digs[idx + 1]} to make <b>${nxt.cur}</b>.`);
+    }
+    if (!nxt) parts.push(`Remainder: <b>${o.rem}</b>.`);
+    return parts.join(' ');
+  }
+
+  function render(m, A, B, inp) {
+    const nd = m.bStr.length, base = nd + 1;
+    const colOf = i => base + i + (m.hasPoint && i >= m.nInt ? 1 : 0);
+    const cols = base + m.digs.length + (m.hasPoint ? 1 : 0);
+    const rowsN = 2 + m.rows.length;
+    const cell = (c, r, t, cls, s) =>
+      `<div class="c ${cls}" style="grid-column:${c + 1};grid-row:${r}" data-s="${s || 0}">${t}</div>`;
+
+    let h = '<div class="colhl"></div><div class="bracket"></div>';
+    m.bStr.split('').forEach((ch, j) => { h += cell(j, 2, ch, 'dv'); });
+    m.digs.forEach((d, i) => { h += cell(colOf(i), 2, d, 'dd'); });
+    if (m.hasPoint) h += cell(base + m.nInt, 2, '.', 'dd');
+
+    m.out.forEach(o => { if (o.visible) h += cell(colOf(o.i), 1, String(o.q), 'qd', o.step); });
+    if (m.hasPoint) h += cell(base + m.nInt, 1, '.', 'qd', m.out[m.nInt - 1].step);
+
+    m.rows.forEach((row, idx) => {
+      const r = 3 + idx, L = row.text.length, s0 = row.end - L + 1;
+      if (row.type === 'prod') {
+        const sStart = row.end - row.span + 1, chars = {};
+        for (let j = 0; j < L; j++) chars[colOf(s0 + j)] = row.text[j];
+        for (let c = colOf(sStart); c <= colOf(row.end); c++) h += cell(c, r, chars[c] ?? '', 'ul', row.step);
+        h += cell(colOf(sStart) - 1, r, '−', 'minus', row.step);
+      } else {
+        for (let j = 0; j < L; j++) {
+          const cls = row.type === 'rem' ? 'rm' : (j === L - 1 ? 'br' : '');
+          h += cell(colOf(s0 + j), r, row.text[j], cls, row.step);
+        }
+      }
+    });
+
+    board.innerHTML = h;
+    board.style.setProperty('--cols', cols);
+    board.style.setProperty('--rows', rowsN);
+    board.style.setProperty('--nd', nd);
+    board.style.setProperty('--cell', cellPx + 'px');
+
+    // written steps
+    listEl.innerHTML = m.out.filter(o => o.visible).map(o =>
+      `<li data-s="${o.step}"><span class="n">${o.step}</span><p>${stepText(m, o, o.i)}</p></li>`).join('');
+
+    renderResult(m, A, B, inp);
+  }
+
+  function renderResult(m, A, B, inp) {
+    const sign = m.negative ? '−' : '';
+    const notes = [];
+    if (A.neg || B.neg) {
+      notes.push(m.negative
+        ? 'Exactly one number is negative, so the quotient is negative. The working uses the positive values.'
+        : 'The working uses the positive values; the sign of the quotient is positive.');
+    }
+    if (m.k > 0) {
+      const scaledFull = m.intPart + (m.fullFrac ? '.' + m.fullFrac : '');
+      notes.push(`The divisor has ${m.k} decimal place${m.k > 1 ? 's' : ''}. Multiply both numbers by 10${m.k > 1 ? '<sup>' + m.k + '</sup>' : ''} so the divisor becomes a whole number: ${inp.aRaw.replace(/^[-+]/, '')} ÷ ${inp.bRaw.replace(/^[-+]/, '')} = ${scaledFull} ÷ ${m.bStr}.`);
+    }
+    if (m.truncated) {
+      notes.push(`The dividend has more decimal digits than the ${inp.places} places asked for, so only the first ${inp.places} are used. The quotient is cut off, not rounded.`);
+    }
+    if (m.finalRem === 0n) {
+      notes.push(m.qFrac.length < inp.places
+        ? `The remainder is 0 after ${m.qFrac.length} decimal place${m.qFrac.length === 1 ? '' : 's'}, so the division ends exactly and no more digits are needed.`
+        : 'The remainder is 0, so the division ends exactly.');
+    } else if (m.recurring) {
+      notes.push(`A remainder has come back, so the digits <b>${m.recurring.block}</b> repeat forever.`);
+    } else {
+      notes.push(`Stopped at ${m.n} decimal place${m.n === 1 ? '' : 's'} with a non-zero remainder. The quotient is cut off, not rounded.`);
+    }
+
+    const recLine = m.recurring
+      ? `${sign}${m.qInt}.${m.recurring.lead}(${m.recurring.block}) <span>(digits in brackets recur)</span>`
+      : '';
+
+    resultEl.innerHTML =
+      `<div><span class="lbl">Quotient</span><span class="big">${sign}${m.quotient}</span>` +
+      (recLine ? `<span class="rec">= ${recLine}</span>` : '') + `</div>` +
+      `<div><span class="lbl">Remainder</span><span class="mid">${m.remDec}</span></div>` +
+      `<div class="check">Dividend = Divisor × Quotient + Remainder<br><b>${m.usedDividend}</b> = ${m.bStr} × ${m.qDec} + ${m.remDec}</div>` +
+      `<ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>`;
+  }
+
+  function applyShown() {
+    board.querySelectorAll('[data-s]').forEach(el => el.classList.toggle('off', +el.dataset.s > shown));
+    listEl.querySelectorAll('li').forEach(li => {
+      const s = +li.dataset.s;
+      li.classList.toggle('off', s > shown);
+      li.classList.toggle('now', s === shown && shown < model.total);
+    });
+    $('where').textContent = shown >= model.total ? `All ${model.total} steps shown` : `Step ${shown} of ${model.total}`;
+    $('back').disabled = shown <= 1;
+    $('next').disabled = shown >= model.total;
+    $('all').disabled = shown >= model.total;
+  }
+
+  function update() {
+    const inp = parseInputs();
+    if (inp.err) { msg.textContent = inp.err; return; }
+    const m = compute(inp.A, inp.B, inp.places);
+    if (m.error) { msg.textContent = 'The divisor cannot be zero.'; return; }
+    msg.textContent = '';
+    model = m;
+    render(m, inp.A, inp.B, inp);
+    shown = m.total;
+    applyShown();
+  }
+
+  ['dividend', 'divisor', 'places'].forEach(id => $(id).addEventListener('input', update));
+  $('ctl').addEventListener('submit', e => e.preventDefault());
+  $('size').addEventListener('change', () => {
+    cellPx = +$('size').value;
+    board.style.setProperty('--cell', cellPx + 'px');
+  });
+  $('gridToggle').addEventListener('change', e => board.classList.toggle('grid', e.target.checked));
+  $('back').addEventListener('click', () => { shown = Math.max(1, shown - 1); applyShown(); });
+  $('next').addEventListener('click', () => { shown = Math.min(model.total, shown + 1); applyShown(); });
+  $('all').addEventListener('click', () => { shown = model.total; applyShown(); });
+
+  // column guide while pointing at the board
+  board.addEventListener('pointermove', e => {
+    const hl = board.querySelector('.colhl');
+    if (!hl || !board.classList.contains('grid')) return;
+    const r = board.getBoundingClientRect();
+    const c = Math.floor((e.clientX - r.left) / cellPx);
+    const cols = +getComputedStyle(board).getPropertyValue('--cols');
+    if (c < 0 || c >= cols) { hl.style.display = 'none'; return; }
+    hl.style.left = (c * cellPx) + 'px';
+    hl.style.display = 'block';
+  });
+  board.addEventListener('pointerleave', () => {
+    const hl = board.querySelector('.colhl');
+    if (hl) hl.style.display = 'none';
+  });
+
+  if (window.innerWidth < 520) { $('size').value = '32'; cellPx = 32; }
+  update();
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  });
+}
+</script>
+</body>
+</html>
